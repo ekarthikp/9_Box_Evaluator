@@ -821,7 +821,7 @@ class AIInsightsGenerator:
             try:
                 import google.generativeai as genai
                 genai.configure(api_key=self.api_key)
-                self.model = genai.GenerativeModel('gemini-pro')
+                self.model = genai.GenerativeModel('gemini-2.5-flash')
                 self.initialized = True
             except Exception as e:
                 logger.error(f"Failed to initialize Gemini: {e}")
