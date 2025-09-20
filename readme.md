@@ -1,5 +1,7 @@
 HR Talent Management Dashboard
+
 This is an enterprise-grade, interactive dashboard built with Streamlit for HR talent management. It provides a comprehensive suite of tools for analyzing employee data, including performance metrics, potential ratings, and talent distribution across various departments.
+
 🌟 Key Features
 Multi-File Upload: Securely upload and consolidate multiple Excel files (.xlsx, .xls) into a single master dataset.
 Interactive Dashboard: A Power BI-style dashboard with dynamic filters for real-time data exploration.
@@ -8,6 +10,7 @@ Advanced Analytics: Includes charts for departmental distribution, employee tenu
 AI-Powered Insights: Optional integration with the Google Gemini API to generate strategic, actionable insights and recommendations based on your data.
 Secure Data Export: Download filtered or complete datasets to a formatted Excel file.
 Enhanced UX: A user-friendly interface with a guided tour, pagination, view presets, and user-friendly error messages, designed for non-technical users.
+
 🛠️ Tech Stack
 Python 3.8+
 Streamlit: For the web application interface.
@@ -15,6 +18,7 @@ Pandas: For data manipulation and analysis.
 Plotly & Plotly Express: For interactive data visualizations.
 NumPy: For numerical operations.
 Google Gemini API: For generating AI-powered insights.
+
 ⚙️ Setup and Installation
 Follow these steps to get the dashboard running on your local machine.
 1. Prerequisites
@@ -24,7 +28,6 @@ A Google Gemini API key for the AI Insights feature. You can obtain one from Goo
 (If this were a Git repository, you would clone it)
 git clone https://your-repository-url/hr-dashboard.git
 cd hr-dashboard
-
 
 3. Create a Virtual Environment
 It's highly recommended to use a virtual environment to manage dependencies.
@@ -75,3 +78,4 @@ HR_DASHBOARD_SESSION_TIMEOUT_MINUTES
 HR_DASHBOARD_ENABLE_AI_INSIGHTS
 📄 License
 This project is licensed under the MIT License. See the LICENSE file for details.
+
