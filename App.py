@@ -927,8 +927,151 @@ class SessionStateManager:
             return True
         return False
 
+# --- Advanced PDF Reporting Module ---
+import base64
+from weasyprint import HTML, CSS
+from datetime import datetime
+
+class ReportGenerator:
+    """Handles the creation of beautiful, story-like PDF reports from dashboard data."""
+
+    @staticmethod
+    def create_story_report(df: pd.DataFrame, metrics: dict, viz_manager: VisualizationManager, company_name: str) -> bytes:
+        """
+        Generates a professionally styled PDF report using HTML and CSS.
+        """
+        # --- 1. Generate charts and encode them for HTML ---
+        charts = {
+            'nine_box': viz_manager.create_nine_box_grid(df),
+            'scatter': viz_manager.create_performance_potential_scatter(df),
+            'category': viz_manager.create_category_breakdown(df),
+            'department': viz_manager.create_department_distribution(df),
+        }
+        encoded_charts = {}
+        for name, fig in charts.items():
+            if fig:
+                img_bytes = fig.to_image(format="png", width=800, height=450, scale=2)
+                encoded_string = base64.b64encode(img_bytes).decode()
+                encoded_charts[name] = f"data:image/png;base64,{encoded_string}"
+
+        # --- 2. Build the HTML content for the report ---
+        report_date = datetime.now().strftime("%d %B %Y")
+
+        # Calculate key percentages for the executive summary
+        total_employees = metrics.get('total_employees', 1)
+        top_talent_count = metrics.get('stars', 0) + metrics.get('future_stars', 0)
+        top_talent_pct = (top_talent_count / total_employees * 100) if total_employees > 0 else 0
+        risk_count = metrics.get('risk_employees', 0)
+        risk_pct = (risk_count / total_employees * 100) if total_employees > 0 else 0
+
+        html_content = f"""
+        <html>
+            <head>
+                <style>
+                    /* --- Define the styles (CSS) --- */
+                    @page {{ size: A4; margin: 1.5cm; }}
+                    body {{ font-family: 'Helvetica', sans-serif; color: #333; }}
+                    h1 {{ color: #153d6d; font-size: 28px; text-align: center; margin-bottom: 0; }}
+                    h2 {{ color: #153d6d; font-size: 22px; border-bottom: 2px solid #4472C4; padding-bottom: 5px; margin-top: 30px;}}
+                    h3 {{ color: #4472C4; font-size: 16px; margin-bottom: 10px; }}
+                    p, li {{ font-size: 12px; line-height: 1.6; }}
+                    .cover-page {{ text-align: center; margin-top: 150px; }}
+                    .subtitle {{ font-size: 18px; color: #555; text-align: center; }}
+                    .report-meta {{ font-size: 14px; color: #777; text-align: center; margin-top: 50px; }}
+                    .page-break {{ page-break-before: always; }}
+                    .metric-container {{ display: flex; justify-content: space-around; text-align: center; margin: 20px 0; }}
+                    .metric {{ border: 1px solid #ddd; border-radius: 8px; padding: 15px; width: 150px;}}
+                    .metric-value {{ font-size: 24px; font-weight: bold; color: #ED7D31; }}
+                    .metric-label {{ font-size: 12px; color: #555; margin-top: 5px;}}
+                    .chart {{ width: 100%; margin-top: 20px; }}
+                    .insight {{ background-color: #f0f5fa; border-left: 4px solid #4472C4; padding: 15px; margin: 15px 0; }}
+                </style>
+            </head>
+            <body>
+                <div class="cover-page">
+                    <h1>Talent Management Report</h1>
+                    <p class="subtitle">{company_name}</p>
+                    <div style="height: 100px;"></div>
+
+                    <p class="report-meta">Generated on: {report_date}</p>
+                </div>
+
+                <div class="page-break"></div>
+
+                <h2>Executive Summary</h2>
+                <p>
+                    This report provides a comprehensive overview of the talent landscape at {company_name}.
+                    Based on the analysis of <strong>{total_employees} employees</strong>, we have identified key strengths, potential risks, and strategic opportunities for talent development.
+                </p>
+                <div class="insight">
+                    <p>
+                        The average performance rating stands at <strong>{metrics.get('avg_performance', 0):.2f}/3.0</strong>, indicating a solid foundation. 
+                        A key highlight is that <strong>{top_talent_pct:.0f}%</strong> of the workforce is identified as 'Top Talent' (Stars and Future Stars), representing a strong leadership pipeline.
+                        Conversely, <strong>{risk_pct:.0f}%</strong> of employees fall into the 'At Risk' category, requiring immediate attention.
+                    </p>
+                </div>
+
+                <h3>Key Performance Indicators</h3>
+                <div class="metric-container">
+                    <div class="metric">
+                        <div class="metric-value">{metrics.get('total_employees', 0):,}</div>
+                        <div class="metric-label">Total Employees</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-value">{metrics.get('avg_performance', 0):.2f}</div>
+                        <div class="metric-label">Avg. Performance</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-value">{top_talent_count:,}</div>
+                        <div class="metric-label">Top Talent</div>
+                    </div>
+                     <div class="metric">
+                        <div class="metric-value">{risk_count:,}</div>
+                        <div class="metric-label">At Risk</div>
+                    </div>
+                </div>
+
+                <div class="page-break"></div>
+                <h2>Deep Dive: Talent Distribution</h2>
+                <h3>Talent 9-Box Grid</h3>
+                <p>The 9-Box Grid below visualizes the distribution of talent based on current performance and future potential. The concentration in each box indicates the health of our talent pipeline.</p>
+                <img src="{encoded_charts['nine_box']}" class="chart">
+
+                <h3>Talent Category Breakdown</h3>
+                <p>This donut chart shows the percentage of employees in each talent category. 'Core Players' and 'High Performers' form the backbone of the organization.</p>
+                <img src="{encoded_charts['category']}" class="chart">
+
+                <div class="page-break"></div>
+                <h2>Deep Dive: Performance Analysis</h2>
+                <h3>Performance vs. Potential Scatter Plot</h3>
+                <p>This scatter plot provides a granular view of every employee, colour-coded by department. It helps identify outliers and departmental trends in performance and potential.</p>
+                <img src="{encoded_charts['scatter']}" class="chart">
+
+                <div class="page-break"></div>
+                <h2>Conclusion & Recommendations</h2>
+                <p>The analysis reveals a capable and promising workforce, with a significant pool of high-potential individuals. To capitalize on these strengths and mitigate risks, we recommend the following actions:</p>
+
+                <div class="insight">
+                    <h3>1. Accelerate Top Talent Development</h3>
+                    <p>Focus on the <strong>{top_talent_count} Stars and Future Stars</strong> with fast-track leadership programs and mentorship opportunities to ensure they are engaged and prepared for future roles.</p>
+                </div>
+                <div class="insight">
+                    <h3>2. Address At-Risk Employees</h3>
+                    <p>Implement targeted Performance Improvement Plans (PIPs) for the <strong>{risk_count} employees</strong> in the 'Risk' category. Proactive intervention is crucial to improve performance or manage transitions.</p>
+                </div>
+                 <div class="insight">
+                    <h3>3. Empower Core Players</h3>
+                    <p>Recognize and develop the large group of 'Core Players'. They are vital to the organization's stability and success. Provide skill enhancement opportunities to keep them motivated and effective.</p>
+                </div>
+		
+            </body>
+        </html>
+        """
+	
+        # --- 3. Convert HTML to PDF ---
+        pdf_bytes = HTML(string=html_content).write_pdf()
+        return pdf_bytes
 # --- Main Application Class ---
-# --- Main Application Class (REVISED WITH BETTER DEFAULTS) ---
 class HRDashboardApp:
     """Main application class with enhanced UX"""
     
@@ -1096,8 +1239,28 @@ class HRDashboardApp:
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     )
                     st.success("✅ Export ready for download!")
+                st.markdown("---")
+                # Replace the old PDF button with the new one
+                if st.button("📄 Generate Story Report (PDF)", key="story_pdf_btn"):
+                    with st.spinner("🎨 Crafting your beautiful report..."):
+                        df_to_export = st.session_state.get('filtered_df', st.session_state.master_df)
+                        metrics = self.analytics.calculate_metrics(df_to_export)
+                        # Call the new story report generator
+                        pdf_file = self.reporter.create_story_report(
+                            df_to_export, 
+                            metrics, 
+                            self.viz,
+                            company_name="Your Company Name" # You can make this dynamic
+                        )
+                        timestamp = datetime.now().strftime('%Y%m%d')
+                        st.download_button(
+                            label="📥 Download Story Report",
+                            data=pdf_file,
+                            file_name=f"HR_Story_Report_{timestamp}.pdf",
+                            mime="application/pdf",
+                        )
+                    st.success("✅ Your report is ready for download!")
 
-    # --- ALL OTHER METHODS in HRDashboardApp remain unchanged ---
     # (Make sure you keep the other methods like run, _apply_custom_css, _render_main_content, etc., as they are)
 
     def _apply_custom_css(self):
@@ -1491,7 +1654,7 @@ class HRDashboardApp:
     def _render_footer(self):
         """Render footer with helpful information"""
         st.markdown("---")
-        st.caption("Version 2.0 | © 2024 HR Analytics")
+        st.caption("Version 2.0 | © 2025 HR Analytics by Karthik Krishnan")
 
 # --- Application Entry Point ---
 def main():

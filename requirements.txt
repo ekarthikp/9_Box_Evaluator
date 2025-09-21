@@ -7,3 +7,6 @@ google-generativeai
 xlsxwriter
 xlrd
 matplotlib
+fpdf2
+kaleido
+weasyprint
