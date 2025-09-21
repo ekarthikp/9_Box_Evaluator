@@ -1081,6 +1081,7 @@ class HRDashboardApp:
         self.viz = VisualizationManager(self.config)
         self.analytics = AnalyticsEngine()
         self.ai_generator = None
+        self.reporter = ReportGenerator()
         
         # Initialize session state
         SessionStateManager.init_session_state()
