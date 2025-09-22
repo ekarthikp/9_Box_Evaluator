@@ -927,233 +927,288 @@ class SessionStateManager:
             return True
         return False
 
-# --- Advanced PDF Reporting Module ---
-# --- Super Awesome PDF Reporting Module ---
+# --- Revamped Professional PDF Reporting Module ---
 import base64
+import logging
+from typing import Dict
+from dataclasses import dataclass, field
 from weasyprint import HTML, CSS
 from datetime import datetime
 import pandas as pd
+from jinja2 import Template
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+@dataclass
+class ReportMetrics:
+    """A validated data structure for all report metrics."""
+    total_employees: int
+    avg_performance: float
+    stars: int = 0
+    future_stars: int = 0
+    high_performers: int = 0
+    core_players: int = 0
+    risk_employees: int = 0
+
+    @property
+    def top_talent_count(self) -> int:
+        return self.stars + self.future_stars
+
+    @property
+    def top_talent_percentage(self) -> float:
+        return (self.top_talent_count / self.total_employees * 100) if self.total_employees > 0 else 0
+
+    @property
+    def risk_percentage(self) -> float:
+        return (self.risk_employees / self.total_employees * 100) if self.total_employees > 0 else 0
+
+@dataclass
+class ReportConfig:
+    """Central configuration for the report's appearance and content."""
+    company_name: str
+    company_logo_base64: str | None = None
+    max_employees_per_table: int = 15
 
 class ReportGenerator:
-    """Handles the creation of awesome, professionally designed PDF reports."""
+    """
+    Generates a professional, data-driven talent management PDF report
+    using a configuration object and Jinja2 templating.
+    """
+    def __init__(self, config: ReportConfig):
+        self.config = config
+        self.css_template = self._load_css_template()
+        self.html_template = self._load_html_template()
+        logger.info(f"ReportGenerator initialized for {config.company_name}")
 
-    @staticmethod
-    def create_story_report(df: pd.DataFrame, metrics: dict, viz_manager: VisualizationManager, company_name: str, company_logo_base64: str = None) -> bytes:
-        """
-        Generates a beautifully styled PDF report using advanced HTML and CSS.
-        """
-        # --- Chart Generation (No changes here) ---
-        charts = {
-            'nine_box': viz_manager.create_nine_box_grid(df),
-            'scatter': viz_manager.create_performance_potential_scatter(df),
-            'category': viz_manager.create_category_breakdown(df),
-            'department': viz_manager.create_department_distribution(df),
+    def create_report(self, df: pd.DataFrame, metrics: ReportMetrics, viz_manager) -> bytes:
+        """The main method to generate the complete PDF report."""
+        try:
+            logger.info("Starting talent report generation...")
+            
+            # 1. Prepare data and assets
+            charts = self._generate_charts(df, viz_manager)
+            employee_tables_html = self._generate_employee_tables(df)
+
+            # 2. Prepare the rendering context for Jinja2
+            context = {
+                'config': self.config,
+                'metrics': metrics,
+                'charts': charts,
+                'employee_tables': employee_tables_html,
+                'report_date': datetime.now().strftime("%B %d, %Y"),
+            }
+
+            # 3. Render CSS and HTML
+            final_css = Template(self.css_template).render(company_name=self.config.company_name)
+            final_html = Template(self.html_template).render(context, css=final_css)
+
+            # 4. Generate PDF
+            logger.info("Rendering final PDF from HTML...")
+            pdf_bytes = HTML(string=final_html, base_url=".").write_pdf()
+            logger.info(f"Successfully generated {len(pdf_bytes):,} byte PDF report.")
+            return pdf_bytes
+
+        except Exception as e:
+            logger.error(f"Critical error during report generation: {e}", exc_info=True)
+            return self._create_error_pdf(f"An unexpected error occurred: {e}")
+
+    def _generate_charts(self, df: pd.DataFrame, viz_manager) -> Dict[str, str]:
+        """Generates and base64-encodes all required charts."""
+        charts = {}
+        chart_methods = {
+            'nine_box': viz_manager.create_nine_box_grid,
+            'scatter': viz_manager.create_performance_potential_scatter,
+            'category': viz_manager.create_category_breakdown,
+            'department': viz_manager.create_department_distribution,
         }
-        encoded_charts = {}
-        for name, fig in charts.items():
-            if fig:
-                img_bytes = fig.to_image(format="png", width=800, height=450, scale=2)
-                encoded_string = base64.b64encode(img_bytes).decode()
-                encoded_charts[name] = f"data:image/png;base64,{encoded_string}"
+        for name, method in chart_methods.items():
+            try:
+                fig = method(df)
+                if fig:
+                    img_bytes = fig.to_image(format="png", width=800, height=450, scale=2)
+                    encoded = base64.b64encode(img_bytes).decode()
+                    charts[name] = f"data:image/png;base64,{encoded}"
+            except Exception as e:
+                logger.warning(f"Could not generate chart '{name}': {e}")
+                charts[name] = None
+        return charts
 
-        # --- HTML Table Generation (No changes here) ---
-        # ... (The exact code for generating html_tables_string from the previous step) ...
-        category_order = {
+    def _generate_employee_tables(self, df: pd.DataFrame) -> str:
+        """Generates HTML for the detailed employee breakdown tables."""
+        category_mapping = {
             "High Potential / High Performance (Star)": "🌟 Stars",
             "High Potential / Moderate Performance (Future Star)": "🚀 Future Stars",
             "Moderate Potential / High Performance (High Performer)": "⚡ High Performers",
-            "Moderate Potential / Moderate Performance (Core Player)": "SOLID Core Players",
+            "Moderate Potential / Moderate Performance (Core Player)": "💼 Core Players",
             "Low Potential / Low Performance (Risk)": "⚠️ At Risk"
         }
-        html_tables_string = ""
-        for category_key, category_name in category_order.items():
-            segment_df = df[df['9-Box Category'] == category_key].copy()
-            if segment_df.empty: continue
-            segment_df.sort_values(by=['Performance', 'Potential Rating'], ascending=False, inplace=True)
-            segment_df = segment_df.head(15)
-            html_tables_string += f"<h3>{category_name} ({len(segment_df)} Employees Shown)</h3>"
-            html_tables_string += "<table><thead><tr><th>Employee Name</th><th>Department</th><th>Performance</th><th>Potential</th></tr></thead>"
-            html_tables_string += "<tbody>"
+        
+        tables_html = []
+        for key, display_name in category_mapping.items():
+            segment_df = df[df['9-Box Category'] == key].sort_values(
+                by=['Performance', 'Potential Rating'], ascending=False
+            ).head(self.config.max_employees_per_table)
+
+            if segment_df.empty:
+                continue
+
+            table_rows = ""
             for _, row in segment_df.iterrows():
-                html_tables_string += f"<tr><td>{row.get('Employee Name', 'N/A')}</td><td>{row.get('Department', 'N/A')}</td><td>{row.get('Performance', 0):.1f}</td><td>{row.get('Potential Rating', 0):.1f}</td></tr>"
-            html_tables_string += "</tbody></table>"
+                perf_val = row.get('Performance', 0)
+                if perf_val >= 2.5: badge_class = 'high'
+                elif perf_val >= 1.5: badge_class = 'medium'
+                else: badge_class = 'low'
+                
+                table_rows += f"""
+                <tr>
+                    <td>{row.get('Employee Name', 'N/A')}</td>
+                    <td>{row.get('Department', 'N/A')}</td>
+                    <td>{perf_val:.1f}</td>
+                    <td>{row.get('Potential Rating', 0):.1f}</td>
+                    <td><span class="badge badge-{badge_class}">{badge_class.capitalize()}</span></td>
+                </tr>
+                """
 
-        # --- Build Final HTML & CSS ---
-        report_date = datetime.now().strftime("%d %B %Y")
-        
-        # Prepare logo HTML
-        logo_html = ""
-        if company_logo_base64:
-            logo_html = f'<img src="data:image/png;base64,{company_logo_base64}" class="logo">'
-        
-        # Prepare metrics and calculations
-        total_employees = metrics.get('total_employees', 1)
-        top_talent_count = metrics.get('stars', 0) + metrics.get('future_stars', 0)
-        top_talent_pct = (top_talent_count / total_employees * 100) if total_employees > 0 else 0
-        risk_count = metrics.get('risk_employees', 0)
-        risk_pct = (risk_count / total_employees * 100) if total_employees > 0 else 0
-        
-        html_content = f"""
+            tables_html.append(f"""
+            <div class="table-container">
+                <h3>{display_name} ({len(segment_df)} employees shown)</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Employee Name</th>
+                            <th>Department</th>
+                            <th>Performance</th>
+                            <th>Potential</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>{table_rows}</tbody>
+                </table>
+            </div>
+            """)
+        return "".join(tables_html)
+
+    def _create_error_pdf(self, error_message: str) -> bytes:
+        """Creates a fallback PDF to inform the user of an error."""
+        error_html = f"""
         <html>
-            <head>
-                <style>
-                    /* --- A W E S O M E   S T Y L E S --- */
-
-                    /* Import a professional font from Google Fonts */
-                    @import url('https://fonts.googleapis.com/css2?family=Lato:wght@400;700&display=swap');
-                    
-                    /* Define page layout, headers, and footers */
-                    @page {{
-                        size: A4;
-                        margin: 2cm 1.5cm 2cm 1.5cm;
-
-                        /* Add a header with the company name */
-                        @top-center {{
-                            content: "{company_name} - Confidential";
-                            font-family: 'Lato', sans-serif;
-                            font-size: 9px;
-                            color: #888;
-                        }}
-
-                        /* Add a footer with page numbers */
-                        @bottom-right {{
-                            content: "Page " counter(page) " of " counter(pages);
-                            font-family: 'Lato', sans-serif;
-                            font-size: 9px;
-                            color: #888;
-                        }}
-                    }}
-                    
-                    /* General body styling */
-                    body {{
-                        font-family: 'Lato', sans-serif;
-                        color: #34495e; /* Dark blue-gray for text */
-                        font-size: 12px;
-                    }}
-
-                    /* Cover page specific styles */
-                    .cover-page {{ text-align: center; margin-top: 120px; }}
-                    .logo {{ max-height: 80px; margin-bottom: 30px; }}
-                    h1.cover-title {{
-                        font-size: 32px;
-                        color: #2c3e50; /* A darker shade for the main title */
-                        margin-bottom: 10px;
-                        font-weight: 700;
-                    }}
-                    .subtitle {{ font-size: 20px; color: #7f8c8d; }}
-                    .report-meta {{ font-size: 14px; color: #95a5a6; margin-top: 150px; }}
-                    .page-break {{ page-break-before: always; }}
-
-                    /* Main content heading styles */
-                    h2 {{
-                        font-size: 24px;
-                        color: #2980b9; /* A strong blue for main headings */
-                        border-bottom: 2px solid #3498db;
-                        padding-bottom: 8px;
-                        margin-top: 25px;
-                        font-weight: 700;
-                    }}
-                    h3 {{
-                        font-size: 16px;
-                        color: #2c3e50;
-                        margin-top: 20px;
-                        font-weight: 700;
-                    }}
-
-                    /* Enhanced metric boxes */
-                    .metric-container {{ display: flex; justify-content: space-around; text-align: center; margin: 25px 0; gap: 15px; }}
-                    .metric {{ background: #f8f9f9; border-radius: 8px; padding: 20px; width: 150px; border: 1px solid #ecf0f1; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }}
-                    .metric-value {{ font-size: 28px; font-weight: 700; color: #e67e22; /* Accent color */ }}
-                    .metric-label {{ font-size: 12px; color: #7f8c8d; margin-top: 8px; }}
-                    
-                    /* Insight callout box */
-                    .insight {{ background-color: #ecf5ff; border-left: 5px solid #3498db; padding: 15px 20px; margin: 20px 0; }}
-                    
-                    /* Chart and table styles */
-                    .chart {{ width: 100%; margin: 20px 0; border: 1px solid #ecf0f1; border-radius: 5px; }}
-                    table {{ width: 100%; border-collapse: collapse; margin-bottom: 25px; font-size: 11px; }}
-                    th, td {{ padding: 10px 12px; border-bottom: 1px solid #ecf0f1; text-align: left; }}
-                    thead tr {{ background-color: #34495e; color: white; font-weight: bold; }}
-                    tbody tr:nth-child(even) {{ background-color: #f8f9f9; }}
-                </style>
-            </head>
-            <body>
-                <div class="cover-page">
-                    {logo_html}
-                    <h1 class="cover-title">Talent Management Report</h1>
-                    <p class="subtitle">{company_name}</p>
-                    <p class="report-meta">Generated on: {report_date}</p>
-                </div>
-
-                <div class="page-break"></div>
-                
-                <h2>📄 Executive Summary</h2>
-                <p>
-                    This report provides a comprehensive overview of the talent landscape at {company_name}.
-                    Based on the analysis of <strong>{total_employees} employees</strong>, we have identified key strengths, potential risks, and strategic opportunities for talent development.
-                </p>
-                <div class="insight">
-                    <p>
-                        The average performance rating stands at <strong>{metrics.get('avg_performance', 0):.2f}/3.0</strong>, indicating a solid foundation. 
-                        A key highlight is that <strong>{top_talent_pct:.0f}%</strong> of the workforce is identified as 'Top Talent' (Stars and Future Stars), representing a strong leadership pipeline.
-                        Conversely, <strong>{risk_pct:.0f}%</strong> of employees fall into the 'At Risk' category, requiring immediate attention.
-                    </p>
-                </div>
-                
-                <h3>Key Performance Indicators</h3>
-                <div class="metric-container">
-                    <div class="metric">
-                        <div class="metric-value">{metrics.get('total_employees', 0):,}</div>
-                        <div class="metric-label">Total Employees</div>
-                    </div>
-                    <div class="metric">
-                        <div class="metric-value">{metrics.get('avg_performance', 0):.2f}</div>
-                        <div class="metric-label">Avg. Performance</div>
-                    </div>
-                    <div class="metric">
-                        <div class="metric-value">{top_talent_count:,}</div>
-                        <div class="metric-label">Top Talent</div>
-                    </div>
-                     <div class="metric">
-                        <div class="metric-value">{risk_count:,}</div>
-                        <div class="metric-label">At Risk</div>
-                    </div>
-                </div>
-
-                <div class="page-break"></div>
-                <h2>📊 Deep Dive: Talent Distribution</h2>
-                <img src="{encoded_charts['nine_box']}" class="chart">
-                <img src="{encoded_charts['category']}" class="chart">
-
-                <div class="page-break"></div>
-                <h2>📈 Deep Dive: Performance Analysis</h2>
-                <img src="{encoded_charts['scatter']}" class="chart">
-
-                <div class="page-break"></div>
-                <h2>👥 Talent Segmentation Details</h2>
-                {html_tables_string}
-
-                <div class="page-break"></div>
-                <h2>💡 Conclusion & Recommendations</h2>
-                <div class="insight">
-                    <h3>1. Accelerate Top Talent Development</h3>
-                    <p>Focus on the <strong>{top_talent_count} Stars and Future Stars</strong> with fast-track leadership programs and mentorship opportunities to ensure they are engaged and prepared for future roles.</p>
-                </div>
-                <div class="insight">
-                    <h3>2. Address At-Risk Employees</h3>
-                    <p>Implement targeted Performance Improvement Plans (PIPs) for the <strong>{risk_count} employees</strong> in the 'Risk' category. Proactive intervention is crucial to improve performance or manage transitions.</p>
-                </div>
-                 <div class="insight">
-                    <h3>3. Empower Core Players</h3>
-                    <p>Recognize and develop the large group of 'Core Players'. They are vital to the organization's stability and success. Provide skill enhancement opportunities to keep them motivated and effective.</p>
-                </div>
-            </body>
+        <body style="font-family: sans-serif; text-align: center; padding: 40px;">
+            <div style="border: 2px solid #D32F2F; background: #FFEBEE; padding: 20px; border-radius: 8px;">
+                <h1 style="color: #D32F2F;">Report Generation Failed</h1>
+                <p>We're sorry, but the PDF report could not be generated.</p>
+                <p style="color: #616161; font-size: 14px;"><b>Error:</b> {error_message}</p>
+                <p style="color: #616161; font-size: 14px;">Please check your data file for errors and try again.</p>
+            </div>
+        </body>
         </html>
         """
+        return HTML(string=error_html).write_pdf()
+        
+    def _load_css_template(self) -> str:
+        """Loads the CSS template. In a real app, this could be from a file."""
+        return """
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        @page {
+            size: A4; margin: 2cm 1.5cm;
+            @top-center { content: "{{ company_name }} - Confidential Talent Report"; font-family: 'Inter', sans-serif; font-size: 9px; color: #64748b; }
+            @bottom-right { content: "Page " counter(page) " of " counter(pages); font-family: 'Inter', sans-serif; font-size: 9px; color: #64748b; }
+        }
+        body { font-family: 'Inter', sans-serif; color: #1e293b; font-size: 12px; line-height: 1.6; }
+        .cover-page { text-align: center; margin-top: 120px; }
+        .logo { max-height: 80px; margin-bottom: 30px; }
+        h1.cover-title { font-size: 36px; color: #0f172a; margin-bottom: 10px; font-weight: 700; }
+        .subtitle { font-size: 20px; color: #475569; }
+        .report-meta { font-size: 14px; color: #64748b; margin-top: 40px; }
+        .page-break { page-break-before: always; }
+        h2 { font-size: 24px; color: #0f172a; border-bottom: 3px solid #3b82f6; padding-bottom: 8px; margin-top: 30px; font-weight: 600; }
+        h3 { font-size: 18px; color: #1e293b; margin-top: 25px; margin-bottom: 15px; font-weight: 600; }
+        .metric-container { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin: 30px 0; }
+        .metric { background: #f8fafc; border-radius: 12px; padding: 24px 16px; text-align: center; border: 1px solid #e2e8f0; }
+        .metric-value { font-size: 32px; font-weight: 700; color: #3b82f6; }
+        .metric-label { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+        .insight { background: #eff6ff; border-left: 4px solid #3b82f6; border-radius: 0 8px 8px 0; padding: 20px 24px; margin: 24px 0; }
+        .warning-insight { background: #fef3c7; border-left-color: #f59e0b; }
+        .chart { width: 100%; margin: 24px 0; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; }
+        .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .table-container { margin-bottom: 32px; }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; }
+        th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+        thead tr { background: #1e293b; color: white; }
+        tbody tr:nth-child(even) { background-color: #f8fafc; }
+        .badge { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 10px; font-weight: 600; color: white; }
+        .badge-high { background-color: #10b981; }
+        .badge-medium { background-color: #f59e0b; }
+        .badge-low { background-color: #ef4444; }
+        """
 
-        # --- Convert to PDF ---
-        pdf_bytes = HTML(string=html_content).write_pdf()
-        return pdf_bytes
+    def _load_html_template(self) -> str:
+        """Loads the Jinja2 HTML template. In a real app, this could be from a file."""
+        return """
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF--8">
+            <title>Talent Report - {{ context.config.company_name }}</title>
+            <style>{{ css }}</style>
+        </head>
+        <body>
+            <div class="cover-page">
+                {% if context.config.company_logo_base64 %}
+                <img src="data:image/png;base64,{{ context.config.company_logo_base64 }}" class="logo">
+                {% endif %}
+                <h1 class="cover-title">Talent Management Report</h1>
+                <p class="subtitle">{{ context.config.company_name }}</p>
+                <p class="report-meta">Generated on {{ context.report_date }}</p>
+            </div>
+            
+            <div class="page-break"></div>
+            <h2>📄 Executive Summary</h2>
+            <p>This talent analysis for <strong>{{ context.config.company_name }}</strong> examines {{ context.metrics.total_employees }} employees to reveal key insights into performance, potential, and strategic opportunities for growth.</p>
+            {% if context.metrics.risk_percentage > 20 %}
+            <div class="insight warning-insight">
+                <p><strong>Critical Alert:</strong> <strong>{{ "%.1f"|format(context.metrics.risk_percentage) }}%</strong> of employees are in the 'At Risk' category, indicating a need for immediate intervention.</p>
+            </div>
+            {% else %}
+            <div class="insight">
+                <p><strong>Talent Health Check:</strong> The organization maintains a healthy talent pipeline with <strong>{{ "%.1f"|format(context.metrics.top_talent_percentage) }}%</strong> identified as top talent.</p>
+            </div>
+            {% endif %}
+            
+            <div class="metric-container">
+                <div class="metric"><span class="metric-value">{{ "{:,}".format(context.metrics.total_employees) }}</span><div class="metric-label">Total Employees</div></div>
+                <div class="metric"><span class="metric-value">{{ "%.2f"|format(context.metrics.avg_performance) }}</span><div class="metric-label">Avg Performance</div></div>
+                <div class="metric"><span class="metric-value">{{ "{:,}".format(context.metrics.top_talent_count) }}</span><div class="metric-label">Top Talent</div></div>
+                <div class="metric"><span class="metric-value">{{ "{:,}".format(context.metrics.risk_employees) }}</span><div class="metric-label">At Risk</div></div>
+            </div>
+
+            <div class="page-break"></div>
+            <h2>📊 Talent Distribution Analysis</h2>
+            {% if context.charts.nine_box %}<img src="{{ context.charts.nine_box }}" class="chart">{% endif %}
+            <div class="chart-grid">
+                {% if context.charts.category %}<img src="{{ context.charts.category }}" class="chart">{% endif %}
+                {% if context.charts.department %}<img src="{{ context.charts.department }}" class="chart">{% endif %}
+            </div>
+
+            <div class="page-break"></div>
+            <h2>📈 Performance vs Potential Analysis</h2>
+            {% if context.charts.scatter %}<img src="{{ context.charts.scatter }}" class="chart">{% endif %}
+            
+            <div class="page-break"></div>
+            <h2>👥 Detailed Talent Breakdown</h2>
+            {{ context.employee_tables|safe }}
+            
+            <div class="page-break"></div>
+            <h2>💡 Strategic Recommendations</h2>
+            <div class="insight"><p><strong>Accelerate Leadership Pipeline:</strong> Focus development on your <strong>{{ context.metrics.top_talent_count }} Stars and Future Stars</strong> to build your next generation of leaders.</p></div>
+            <div class="insight"><p><strong>Strengthen Core Foundation:</strong> Invest in your <strong>{{ context.metrics.core_players }} Core Players</strong> to maintain organizational stability and productivity.</p></div>
+            {% if context.metrics.risk_employees > 0 %}
+            <div class="insight warning-insight"><p><strong>Address Performance Gaps:</strong> Implement targeted interventions for the <strong>{{ context.metrics.risk_employees }} at-risk employees</strong> to improve performance or manage transitions.</p></div>
+            {% endif %}
+        </body>
+        </html>
+        """
     
 # --- Main Application Class ---
 class HRDashboardApp:
@@ -1308,56 +1363,70 @@ class HRDashboardApp:
                     st.session_state.filter_state = {}
                     st.rerun()
 
-            with st.expander("💾 **Step 3: Export Data**", expanded=False):
-                export_choice = st.radio("What to export?", ["Current View (Filtered)", "All Data"], key="export_choice")
-                export_df = filtered_df if export_choice == "Current View (Filtered)" else df
-                
-                st.info(f"📊 Will export {len(export_df):,} records")
-                
-                if st.button("📥 Generate Excel Export", key="export_btn"):
-                    excel_file = self.processor.export_to_excel(export_df)
-                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    st.download_button(
-                        label="💾 Download Excel File",
-                        data=excel_file,
-                        file_name=f"hr_data_{timestamp}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    )
-                    st.success("✅ Export ready for download!")
-                st.markdown("---")
+            with st.expander("💾 **Step 3: Export Data**", expanded=True):
                 st.markdown("#### Report Customization")
                 company_name = st.text_input(
                     "Company Name", 
-                    st.session_state.get('company_name', "Your Company Inc."), 
-                    help="Enter the company name to display on the report cover."
+                    st.session_state.get('company_name', "Global Tech Inc."),
+                    help="Enter the company name for the report."
                 )
                 st.session_state['company_name'] = company_name
 
                 logo_file = st.file_uploader(
                     "Upload Company Logo (Optional)", 
-                    type=['png', 'jpg', 'jpeg'],
-                    help="Upload a logo for the report's cover page."
+                    type=['png', 'jpg', 'jpeg']
                 )
-                # Replace the old PDF button with the new one
-                if st.button("📄 Generate Story Report (PDF)", key="story_pdf_btn"):
-                    with st.spinner("🎨 Crafting your beautiful report..."):
+
+                st.markdown("---")
+                # ... (Excel export button) ...
+                
+                if st.button("📄 Generate Professional Report (PDF)", key="pro_pdf_btn", use_container_width=True):
+                    with st.spinner("Building your professional PDF report..."):
                         df_to_export = st.session_state.get('filtered_df', st.session_state.master_df)
-                        metrics = self.analytics.calculate_metrics(df_to_export)
-                        # Call the new story report generator
-                        pdf_file = self.reporter.create_story_report(
-                            df_to_export, 
-                            metrics, 
-                            self.viz,
-                            company_name="Your Company Name" # You can make this dynamic
+                        
+                        # 1. Create the ReportConfig from sidebar inputs
+                        logo_base64 = None
+                        if logo_file:
+                            logo_base64 = base64.b64encode(logo_file.getvalue()).decode()
+                        
+                        report_config = ReportConfig(
+                            company_name=company_name,
+                            company_logo_base64=logo_base64
                         )
+
+                        # 2. Create the ReportMetrics from the app's analytics
+                        app_metrics = self.analytics.calculate_metrics(df_to_export)
+                        try:
+                            report_metrics = ReportMetrics(
+                                total_employees=app_metrics.get('total_employees', 0),
+                                avg_performance=app_metrics.get('avg_performance', 0.0),
+                                stars=app_metrics.get('stars', 0),
+                                future_stars=app_metrics.get('future_stars', 0),
+                                high_performers=app_metrics.get('high_performers', 0),
+                                core_players=app_metrics.get('core_players', 0),
+                                risk_employees=app_metrics.get('risk_employees', 0)
+                            )
+                        except Exception as e:
+                            st.error(f"Error creating report metrics: {e}")
+                            st.stop()
+
+                        # 3. Instantiate the generator and create the report
+                        generator = ReportGenerator(config=report_config)
+                        pdf_file = generator.create_report(
+                            df=df_to_export,
+                            metrics=report_metrics,
+                            viz_manager=self.viz
+                        )
+                        
                         timestamp = datetime.now().strftime('%Y%m%d')
                         st.download_button(
-                            label="📥 Download Story Report",
+                            label="📥 Download Professional Report",
                             data=pdf_file,
-                            file_name=f"HR_Story_Report_{timestamp}.pdf",
+                            file_name=f"Talent_Report_{company_name.replace(' ', '_')}_{timestamp}.pdf",
                             mime="application/pdf",
+                            use_container_width=True
                         )
-                    st.success("✅ Your report is ready for download!")
+                st.success("✅ Your report is ready for download!")
 
     # (Make sure you keep the other methods like run, _apply_custom_css, _render_main_content, etc., as they are)
 
