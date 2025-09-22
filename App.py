@@ -1426,7 +1426,7 @@ class HRDashboardApp:
                             mime="application/pdf",
                             use_container_width=True
                         )
-                st.success("✅ Your report is ready for download!")
+                    st.success("✅ Your report is ready for download!")
 
     # (Make sure you keep the other methods like run, _apply_custom_css, _render_main_content, etc., as they are)
 
