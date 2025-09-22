@@ -969,7 +969,7 @@ class ReportConfig:
     """Central configuration for the report's appearance and content."""
     company_name: str
     company_logo_base64: str | None = None
-    max_employees_per_table: int = 15
+    max_employees_per_table: int = 1300
 
 class ReportGenerator:
     """
@@ -1051,7 +1051,7 @@ class ReportGenerator:
         for key, display_name in category_mapping.items():
             segment_df = df[df['9-Box Category'] == key].sort_values(
                 by=['Performance', 'Potential Rating'], ascending=False
-            ).head(self.config.max_employees_per_table)
+            )
 
             if segment_df.empty:
                 continue
