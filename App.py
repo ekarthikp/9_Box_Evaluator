@@ -1002,7 +1002,9 @@ class ReportGenerator:
 
             # 3. Render CSS and HTML
             final_css = Template(self.css_template).render(company_name=self.config.company_name)
-            final_html = Template(self.html_template).render(context, css=final_css)
+            
+            # --- THIS IS THE CORRECTED LINE ---
+            final_html = Template(self.html_template).render(context=context, css=final_css)
 
             # 4. Generate PDF
             logger.info("Rendering final PDF from HTML...")
@@ -1013,7 +1015,7 @@ class ReportGenerator:
         except Exception as e:
             logger.error(f"Critical error during report generation: {e}", exc_info=True)
             return self._create_error_pdf(f"An unexpected error occurred: {e}")
-
+    
     def _generate_charts(self, df: pd.DataFrame, viz_manager) -> Dict[str, str]:
         """Generates and base64-encodes all required charts."""
         charts = {}
