@@ -928,19 +928,21 @@ class SessionStateManager:
         return False
 
 # --- Advanced PDF Reporting Module ---
+# --- Super Awesome PDF Reporting Module ---
 import base64
 from weasyprint import HTML, CSS
 from datetime import datetime
+import pandas as pd
 
 class ReportGenerator:
-    """Handles the creation of beautiful, story-like PDF reports from dashboard data."""
+    """Handles the creation of awesome, professionally designed PDF reports."""
 
     @staticmethod
-    def create_story_report(df: pd.DataFrame, metrics: dict, viz_manager: VisualizationManager, company_name: str) -> bytes:
+    def create_story_report(df: pd.DataFrame, metrics: dict, viz_manager: VisualizationManager, company_name: str, company_logo_base64: str = None) -> bytes:
         """
-        Generates a professionally styled PDF report using HTML and CSS.
+        Generates a beautifully styled PDF report using advanced HTML and CSS.
         """
-        # --- 1. Generate charts and encode them for HTML ---
+        # --- Chart Generation (No changes here) ---
         charts = {
             'nine_box': viz_manager.create_nine_box_grid(df),
             'scatter': viz_manager.create_performance_potential_scatter(df),
@@ -954,51 +956,138 @@ class ReportGenerator:
                 encoded_string = base64.b64encode(img_bytes).decode()
                 encoded_charts[name] = f"data:image/png;base64,{encoded_string}"
 
-        # --- 2. Build the HTML content for the report ---
-        report_date = datetime.now().strftime("%d %B %Y")
+        # --- HTML Table Generation (No changes here) ---
+        # ... (The exact code for generating html_tables_string from the previous step) ...
+        category_order = {
+            "High Potential / High Performance (Star)": "🌟 Stars",
+            "High Potential / Moderate Performance (Future Star)": "🚀 Future Stars",
+            "Moderate Potential / High Performance (High Performer)": "⚡ High Performers",
+            "Moderate Potential / Moderate Performance (Core Player)": "SOLID Core Players",
+            "Low Potential / Low Performance (Risk)": "⚠️ At Risk"
+        }
+        html_tables_string = ""
+        for category_key, category_name in category_order.items():
+            segment_df = df[df['9-Box Category'] == category_key].copy()
+            if segment_df.empty: continue
+            segment_df.sort_values(by=['Performance', 'Potential Rating'], ascending=False, inplace=True)
+            segment_df = segment_df.head(15)
+            html_tables_string += f"<h3>{category_name} ({len(segment_df)} Employees Shown)</h3>"
+            html_tables_string += "<table><thead><tr><th>Employee Name</th><th>Department</th><th>Performance</th><th>Potential</th></tr></thead>"
+            html_tables_string += "<tbody>"
+            for _, row in segment_df.iterrows():
+                html_tables_string += f"<tr><td>{row.get('Employee Name', 'N/A')}</td><td>{row.get('Department', 'N/A')}</td><td>{row.get('Performance', 0):.1f}</td><td>{row.get('Potential Rating', 0):.1f}</td></tr>"
+            html_tables_string += "</tbody></table>"
 
-        # Calculate key percentages for the executive summary
+        # --- Build Final HTML & CSS ---
+        report_date = datetime.now().strftime("%d %B %Y")
+        
+        # Prepare logo HTML
+        logo_html = ""
+        if company_logo_base64:
+            logo_html = f'<img src="data:image/png;base64,{company_logo_base64}" class="logo">'
+        
+        # Prepare metrics and calculations
         total_employees = metrics.get('total_employees', 1)
         top_talent_count = metrics.get('stars', 0) + metrics.get('future_stars', 0)
         top_talent_pct = (top_talent_count / total_employees * 100) if total_employees > 0 else 0
         risk_count = metrics.get('risk_employees', 0)
         risk_pct = (risk_count / total_employees * 100) if total_employees > 0 else 0
-
+        
         html_content = f"""
         <html>
             <head>
                 <style>
-                    /* --- Define the styles (CSS) --- */
-                    @page {{ size: A4; margin: 1.5cm; }}
-                    body {{ font-family: 'Helvetica', sans-serif; color: #333; }}
-                    h1 {{ color: #153d6d; font-size: 28px; text-align: center; margin-bottom: 0; }}
-                    h2 {{ color: #153d6d; font-size: 22px; border-bottom: 2px solid #4472C4; padding-bottom: 5px; margin-top: 30px;}}
-                    h3 {{ color: #4472C4; font-size: 16px; margin-bottom: 10px; }}
-                    p, li {{ font-size: 12px; line-height: 1.6; }}
-                    .cover-page {{ text-align: center; margin-top: 150px; }}
-                    .subtitle {{ font-size: 18px; color: #555; text-align: center; }}
-                    .report-meta {{ font-size: 14px; color: #777; text-align: center; margin-top: 50px; }}
+                    /* --- A W E S O M E   S T Y L E S --- */
+
+                    /* Import a professional font from Google Fonts */
+                    @import url('https://fonts.googleapis.com/css2?family=Lato:wght@400;700&display=swap');
+                    
+                    /* Define page layout, headers, and footers */
+                    @page {{
+                        size: A4;
+                        margin: 2cm 1.5cm 2cm 1.5cm;
+
+                        /* Add a header with the company name */
+                        @top-center {{
+                            content: "{company_name} - Confidential";
+                            font-family: 'Lato', sans-serif;
+                            font-size: 9px;
+                            color: #888;
+                        }}
+
+                        /* Add a footer with page numbers */
+                        @bottom-right {{
+                            content: "Page " counter(page) " of " counter(pages);
+                            font-family: 'Lato', sans-serif;
+                            font-size: 9px;
+                            color: #888;
+                        }}
+                    }}
+                    
+                    /* General body styling */
+                    body {{
+                        font-family: 'Lato', sans-serif;
+                        color: #34495e; /* Dark blue-gray for text */
+                        font-size: 12px;
+                    }}
+
+                    /* Cover page specific styles */
+                    .cover-page {{ text-align: center; margin-top: 120px; }}
+                    .logo {{ max-height: 80px; margin-bottom: 30px; }}
+                    h1.cover-title {{
+                        font-size: 32px;
+                        color: #2c3e50; /* A darker shade for the main title */
+                        margin-bottom: 10px;
+                        font-weight: 700;
+                    }}
+                    .subtitle {{ font-size: 20px; color: #7f8c8d; }}
+                    .report-meta {{ font-size: 14px; color: #95a5a6; margin-top: 150px; }}
                     .page-break {{ page-break-before: always; }}
-                    .metric-container {{ display: flex; justify-content: space-around; text-align: center; margin: 20px 0; }}
-                    .metric {{ border: 1px solid #ddd; border-radius: 8px; padding: 15px; width: 150px;}}
-                    .metric-value {{ font-size: 24px; font-weight: bold; color: #ED7D31; }}
-                    .metric-label {{ font-size: 12px; color: #555; margin-top: 5px;}}
-                    .chart {{ width: 100%; margin-top: 20px; }}
-                    .insight {{ background-color: #f0f5fa; border-left: 4px solid #4472C4; padding: 15px; margin: 15px 0; }}
+
+                    /* Main content heading styles */
+                    h2 {{
+                        font-size: 24px;
+                        color: #2980b9; /* A strong blue for main headings */
+                        border-bottom: 2px solid #3498db;
+                        padding-bottom: 8px;
+                        margin-top: 25px;
+                        font-weight: 700;
+                    }}
+                    h3 {{
+                        font-size: 16px;
+                        color: #2c3e50;
+                        margin-top: 20px;
+                        font-weight: 700;
+                    }}
+
+                    /* Enhanced metric boxes */
+                    .metric-container {{ display: flex; justify-content: space-around; text-align: center; margin: 25px 0; gap: 15px; }}
+                    .metric {{ background: #f8f9f9; border-radius: 8px; padding: 20px; width: 150px; border: 1px solid #ecf0f1; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }}
+                    .metric-value {{ font-size: 28px; font-weight: 700; color: #e67e22; /* Accent color */ }}
+                    .metric-label {{ font-size: 12px; color: #7f8c8d; margin-top: 8px; }}
+                    
+                    /* Insight callout box */
+                    .insight {{ background-color: #ecf5ff; border-left: 5px solid #3498db; padding: 15px 20px; margin: 20px 0; }}
+                    
+                    /* Chart and table styles */
+                    .chart {{ width: 100%; margin: 20px 0; border: 1px solid #ecf0f1; border-radius: 5px; }}
+                    table {{ width: 100%; border-collapse: collapse; margin-bottom: 25px; font-size: 11px; }}
+                    th, td {{ padding: 10px 12px; border-bottom: 1px solid #ecf0f1; text-align: left; }}
+                    thead tr {{ background-color: #34495e; color: white; font-weight: bold; }}
+                    tbody tr:nth-child(even) {{ background-color: #f8f9f9; }}
                 </style>
             </head>
             <body>
                 <div class="cover-page">
-                    <h1>Talent Management Report</h1>
+                    {logo_html}
+                    <h1 class="cover-title">Talent Management Report</h1>
                     <p class="subtitle">{company_name}</p>
-                    <div style="height: 100px;"></div>
-
                     <p class="report-meta">Generated on: {report_date}</p>
                 </div>
 
                 <div class="page-break"></div>
-
-                <h2>Executive Summary</h2>
+                
+                <h2>📄 Executive Summary</h2>
                 <p>
                     This report provides a comprehensive overview of the talent landscape at {company_name}.
                     Based on the analysis of <strong>{total_employees} employees</strong>, we have identified key strengths, potential risks, and strategic opportunities for talent development.
@@ -1010,7 +1099,7 @@ class ReportGenerator:
                         Conversely, <strong>{risk_pct:.0f}%</strong> of employees fall into the 'At Risk' category, requiring immediate attention.
                     </p>
                 </div>
-
+                
                 <h3>Key Performance Indicators</h3>
                 <div class="metric-container">
                     <div class="metric">
@@ -1032,25 +1121,20 @@ class ReportGenerator:
                 </div>
 
                 <div class="page-break"></div>
-                <h2>Deep Dive: Talent Distribution</h2>
-                <h3>Talent 9-Box Grid</h3>
-                <p>The 9-Box Grid below visualizes the distribution of talent based on current performance and future potential. The concentration in each box indicates the health of our talent pipeline.</p>
+                <h2>📊 Deep Dive: Talent Distribution</h2>
                 <img src="{encoded_charts['nine_box']}" class="chart">
-
-                <h3>Talent Category Breakdown</h3>
-                <p>This donut chart shows the percentage of employees in each talent category. 'Core Players' and 'High Performers' form the backbone of the organization.</p>
                 <img src="{encoded_charts['category']}" class="chart">
 
                 <div class="page-break"></div>
-                <h2>Deep Dive: Performance Analysis</h2>
-                <h3>Performance vs. Potential Scatter Plot</h3>
-                <p>This scatter plot provides a granular view of every employee, colour-coded by department. It helps identify outliers and departmental trends in performance and potential.</p>
+                <h2>📈 Deep Dive: Performance Analysis</h2>
                 <img src="{encoded_charts['scatter']}" class="chart">
 
                 <div class="page-break"></div>
-                <h2>Conclusion & Recommendations</h2>
-                <p>The analysis reveals a capable and promising workforce, with a significant pool of high-potential individuals. To capitalize on these strengths and mitigate risks, we recommend the following actions:</p>
+                <h2>👥 Talent Segmentation Details</h2>
+                {html_tables_string}
 
+                <div class="page-break"></div>
+                <h2>💡 Conclusion & Recommendations</h2>
                 <div class="insight">
                     <h3>1. Accelerate Top Talent Development</h3>
                     <p>Focus on the <strong>{top_talent_count} Stars and Future Stars</strong> with fast-track leadership programs and mentorship opportunities to ensure they are engaged and prepared for future roles.</p>
@@ -1063,14 +1147,14 @@ class ReportGenerator:
                     <h3>3. Empower Core Players</h3>
                     <p>Recognize and develop the large group of 'Core Players'. They are vital to the organization's stability and success. Provide skill enhancement opportunities to keep them motivated and effective.</p>
                 </div>
-		
             </body>
         </html>
         """
-	
-        # --- 3. Convert HTML to PDF ---
+
+        # --- Convert to PDF ---
         pdf_bytes = HTML(string=html_content).write_pdf()
         return pdf_bytes
+    
 # --- Main Application Class ---
 class HRDashboardApp:
     """Main application class with enhanced UX"""
@@ -1241,6 +1325,19 @@ class HRDashboardApp:
                     )
                     st.success("✅ Export ready for download!")
                 st.markdown("---")
+                st.markdown("#### Report Customization")
+                company_name = st.text_input(
+                    "Company Name", 
+                    st.session_state.get('company_name', "Your Company Inc."), 
+                    help="Enter the company name to display on the report cover."
+                )
+                st.session_state['company_name'] = company_name
+
+                logo_file = st.file_uploader(
+                    "Upload Company Logo (Optional)", 
+                    type=['png', 'jpg', 'jpeg'],
+                    help="Upload a logo for the report's cover page."
+                )
                 # Replace the old PDF button with the new one
                 if st.button("📄 Generate Story Report (PDF)", key="story_pdf_btn"):
                     with st.spinner("🎨 Crafting your beautiful report..."):
